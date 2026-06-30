@@ -4,13 +4,7 @@ import requests
 import matplotlib.pyplot as plt
 
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    MessageHandler,
-    ContextTypes,
-    filters
-)
+from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
 TOKEN = os.getenv("BOT_TOKEN")
 
@@ -34,23 +28,13 @@ COUNTRIES = {
     "China 🇨🇳":"CNY",
     "Canada 🇨🇦":"CAD",
     "Australia 🇦🇺":"AUD",
-    "Switzerland 🇨🇭":"CHF",
-    "India 🇮🇳":"INR",
-    "Russia 🇷🇺":"RUB",
-    "Korea 🇰🇷":"KRW",
-    "UAE 🇦🇪":"AED",
-    "Saudi 🇸🇦":"SAR",
-    "Brazil 🇧🇷":"BRL",
-    "Mexico 🇲🇽":"MXN",
-    "Sweden 🇸🇪":"SEK",
-    "Norway 🇳🇴":"NOK",
-    "New Zealand 🇳🇿":"NZD"
+    "Switzerland 🇨🇭":"CHF"
 }
 
 users = set()
 last = {"usd": None, "btc": None, "gold": None}
 
-# ===================== API =====================
+# ===================== API REAL =====================
 def fx(base, target):
     try:
         return requests.get(
@@ -76,9 +60,9 @@ def metals():
 
 def gold_irr():
     g,_,_ = metals()
-    usd_to_irr = fx("USD","IRR")
-    if usd_to_irr:
-        return g * usd_to_irr
+    usd_irr = fx("USD","IRR")
+    if usd_irr:
+        return g * usd_irr
     return 0
 
 # ===================== CHART =====================
@@ -109,9 +93,8 @@ menu = ReplyKeyboardMarkup(
 # ===================== START =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users.add(update.effective_chat.id)
-
     await update.message.reply_text(
-        "🚀 REAL GOD MODE BOT\n👤 امیر علی فروزان اصل",
+        "🚀 GOD MODE PRO REAL\n👤 امیر علی فروزان اصل",
         reply_markup=menu
     )
 
@@ -120,7 +103,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global last
     text = update.message.text
 
-    # 💱 FX
+    # 💱 FX REAL
     if text == "💱 ارز":
         out = []
         for c in FX:
@@ -129,7 +112,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 out.append(f"USD→{c} = {r}")
         await update.message.reply_text("\n".join(out))
 
-    # ₿ CRYPTO
+    # ₿ CRYPTO REAL
     elif text == "₿ کریپتو":
         out = []
         for c in CRYPTO[:15]:
@@ -138,13 +121,13 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 out.append(f"{c.upper()} = ${p}")
         await update.message.reply_text("\n".join(out))
 
-    # 🥇 GOLD
+    # 🥇 GOLD REAL (IRR)
     elif text == "🥇 طلا":
         await update.message.reply_text(
-            f"🥇 Gold IRR: {gold_irr():,.0f}"
+            f"🥇 Gold (IRR): {gold_irr():,.0f}"
         )
 
-    # 🌍 COUNTRIES
+    # 🌍 COUNTRIES REAL → IRR
     elif text == "🌍 کشورها":
         usd_irr = fx("USD","IRR")
 
@@ -156,12 +139,12 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text("\n".join(out))
 
-    # 📊 CHART
+    # 📊 CHART REAL
     elif text == "📊 نمودار":
         path = chart()
         await update.message.reply_photo(photo=open(path,"rb"))
 
-    # 🔔 STATUS
+    # 🔔 STATUS + SIMPLE AI
     elif text == "🔔 وضعیت":
         usd = fx("USD","IRR")
         btc = crypto("bitcoin")
@@ -170,17 +153,17 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg = "📊 MARKET STATUS\n"
 
         if last["usd"] and usd:
-            msg += f"USD: {'📈' if usd>last['usd'] else '📉'}\n"
+            msg += f"USD: {'📈' if usd > last['usd'] else '📉'}\n"
         if last["btc"] and btc:
-            msg += f"BTC: {'📈' if btc>last['btc'] else '📉'}\n"
+            msg += f"BTC: {'📈' if btc > last['btc'] else '📉'}\n"
         if last["gold"] and gold:
-            msg += f"GOLD: {'📈' if gold>last['gold'] else '📉'}\n"
+            msg += f"GOLD: {'📈' if gold > last['gold'] else '📉'}\n"
 
         last["usd"], last["btc"], last["gold"] = usd, btc, gold
 
         await update.message.reply_text(msg)
 
-# ===================== LIVE LOOP =====================
+# ===================== LIVE ALERT SYSTEM =====================
 async def watcher(app):
     global last
 
@@ -223,5 +206,5 @@ async def post_init(app):
 
 app.post_init = post_init
 
-print("BOT IS RUNNING...")
+print("🚀 GOD MODE PRO RUNNING...")
 app.run_polling()
