@@ -34,34 +34,61 @@ COUNTRIES = {
     "China 🇨🇳":"CNY",
     "Canada 🇨🇦":"CAD",
     "Australia 🇦🇺":"AUD",
-    "Switzerland 🇨🇭":"CHF"
+    "Switzerland 🇨🇭":"CHF",
+    "India 🇮🇳":"INR",
+    "Russia 🇷🇺":"RUB",
+    "Korea 🇰🇷":"KRW",
+    "UAE 🇦🇪":"AED",
+    "Saudi 🇸🇦":"SAR",
+    "Brazil 🇧🇷":"BRL",
+    "Mexico 🇲🇽":"MXN",
+    "Sweden 🇸🇪":"SEK",
+    "Norway 🇳🇴":"NOK",
+    "New Zealand 🇳🇿":"NZD"
 }
 
 users = set()
 last = {"usd": None, "btc": None, "gold": None}
 
-# ===================== APIs =====================
+# ===================== API =====================
 def fx(base, target):
-    return requests.get(
-        f"https://api.frankfurter.app/latest?from={base}&to={target}"
-    ).json()["rates"][target]
+    try:
+        return requests.get(
+            f"https://api.frankfurter.app/latest?from={base}&to={target}"
+        ).json()["rates"][target]
+    except:
+        return None
 
 def crypto(c):
-    return requests.get(
-        f"https://api.coingecko.com/api/v3/simple/price?ids={c}&vs_currencies=usd"
-    ).json()[c]["usd"]
+    try:
+        return requests.get(
+            f"https://api.coingecko.com/api/v3/simple/price?ids={c}&vs_currencies=usd"
+        ).json()[c]["usd"]
+    except:
+        return None
 
 def metals():
-    d = requests.get("https://api.metals.live/v1/spot").json()[0]
-    return d["gold"], d["silver"], d["oil"]
+    try:
+        d = requests.get("https://api.metals.live/v1/spot").json()[0]
+        return d["gold"], d["silver"], d["oil"]
+    except:
+        return 0,0,0
 
 def gold_irr():
-    g = metals()[0]
-    return g * fx("USD","IRR")
+    g,_,_ = metals()
+    usd_to_irr = fx("USD","IRR")
+    if usd_to_irr:
+        return g * usd_to_irr
+    return 0
 
 # ===================== CHART =====================
 def chart():
-    data = [fx("USD","IRR") for _ in range(6)]
+    data = []
+    for _ in range(6):
+        v = fx("USD","IRR")
+        if v:
+            data.append(v)
+
     plt.plot(data)
     plt.title("USD/IRR REAL")
     path = "chart.png"
@@ -69,7 +96,7 @@ def chart():
     plt.close()
     return path
 
-# ===================== MENU =====================
+# ===================== UI =====================
 menu = ReplyKeyboardMarkup(
     [
         ["💱 ارز","₿ کریپتو"],
@@ -82,8 +109,9 @@ menu = ReplyKeyboardMarkup(
 # ===================== START =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users.add(update.effective_chat.id)
+
     await update.message.reply_text(
-        "🚀 REAL MARKET BOT\n👤 امیر علی فروزان اصل",
+        "🚀 REAL GOD MODE BOT\n👤 امیر علی فروزان اصل",
         reply_markup=menu
     )
 
@@ -96,37 +124,35 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "💱 ارز":
         out = []
         for c in FX:
-            try:
-                rate = fx("USD", c)
-                out.append(f"USD→{c} = {rate}")
-            except:
-                pass
+            r = fx("USD", c)
+            if r:
+                out.append(f"USD→{c} = {r}")
         await update.message.reply_text("\n".join(out))
 
     # ₿ CRYPTO
     elif text == "₿ کریپتو":
         out = []
         for c in CRYPTO[:15]:
-            out.append(f"{c.upper()} = ${crypto(c)}")
+            p = crypto(c)
+            if p:
+                out.append(f"{c.upper()} = ${p}")
         await update.message.reply_text("\n".join(out))
 
-    # 🥇 GOLD IRR
+    # 🥇 GOLD
     elif text == "🥇 طلا":
         await update.message.reply_text(
             f"🥇 Gold IRR: {gold_irr():,.0f}"
         )
 
-    # 🌍 COUNTRIES IRR
+    # 🌍 COUNTRIES
     elif text == "🌍 کشورها":
-        usd_to_irr = fx("USD","IRR")
+        usd_irr = fx("USD","IRR")
 
         out = []
         for name, code in COUNTRIES.items():
-            try:
-                value = fx("USD", code) * usd_to_irr
-                out.append(f"{name} = {value:,.0f} IRR")
-            except:
-                pass
+            r = fx("USD", code)
+            if r and usd_irr:
+                out.append(f"{name} = {r * usd_irr:,.0f} IRR")
 
         await update.message.reply_text("\n".join(out))
 
@@ -141,20 +167,20 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         btc = crypto("bitcoin")
         gold = gold_irr()
 
-        msg = "📊 MARKET\n"
+        msg = "📊 MARKET STATUS\n"
 
-        if last["usd"]:
+        if last["usd"] and usd:
             msg += f"USD: {'📈' if usd>last['usd'] else '📉'}\n"
-        if last["btc"]:
+        if last["btc"] and btc:
             msg += f"BTC: {'📈' if btc>last['btc'] else '📉'}\n"
-        if last["gold"]:
+        if last["gold"] and gold:
             msg += f"GOLD: {'📈' if gold>last['gold'] else '📉'}\n"
 
         last["usd"], last["btc"], last["gold"] = usd, btc, gold
 
         await update.message.reply_text(msg)
 
-# ===================== LIVE ALERT =====================
+# ===================== LIVE LOOP =====================
 async def watcher(app):
     global last
 
@@ -166,13 +192,13 @@ async def watcher(app):
 
             msg = None
 
-            if last["usd"] and usd != last["usd"]:
+            if last["usd"] and usd and usd != last["usd"]:
                 msg = f"🔔 USD: {usd:,.0f} IRR"
 
-            if last["btc"] and btc != last["btc"]:
+            if last["btc"] and btc and btc != last["btc"]:
                 msg = f"🔔 BTC: {btc}"
 
-            if last["gold"] and gold != last["gold"]:
+            if last["gold"] and gold and gold != last["gold"]:
                 msg = f"🔔 GOLD: {gold:,.0f} IRR"
 
             last["usd"], last["btc"], last["gold"] = usd, btc, gold
@@ -197,5 +223,5 @@ async def post_init(app):
 
 app.post_init = post_init
 
-print("REAL BOT RUNNING...")
+print("BOT IS RUNNING...")
 app.run_polling()
