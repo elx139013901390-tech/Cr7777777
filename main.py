@@ -4,53 +4,73 @@ import requests
 import matplotlib.pyplot as plt
 
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# ===================== REAL DATA SOURCES =====================
-
-FX_LIST = ["USD", "EUR", "GBP", "JPY", "TRY", "CAD", "AUD", "CHF", "CNY", "IRR"]
+# ===================== DATA =====================
+FX_LIST = ["USD","EUR","GBP","JPY","TRY","CAD","AUD","CHF","CNY","IRR"]
 
 CRYPTO = [
-    "bitcoin","ethereum","tether","bnb","solana","xrp","dogecoin","cardano",
-    "tron","litecoin","polkadot","avalanche-2","chainlink","stellar",
-    "shiba-inu","near","matic-network","uniswap","aptos","arbitrum",
-    "kaspa","okb","fantom","algorand","leo-token"
+    "bitcoin","ethereum","bnb","solana","xrp","dogecoin","cardano","tron",
+    "litecoin","polkadot","avalanche-2","chainlink","stellar","shiba-inu",
+    "near","matic-network","uniswap","aptos","arbitrum","kaspa",
+    "okb","fantom","algorand","leo-token","tether"
 ]
 
-# ذخیره قیمت‌ها برای AI + هشدار
+COUNTRIES = {
+    "Iran 🇮🇷":"IRR",
+    "Turkey 🇹🇷":"TRY",
+    "USA 🇺🇸":"USD",
+    "EU 🇪🇺":"EUR",
+    "UK 🇬🇧":"GBP",
+    "Japan 🇯🇵":"JPY",
+    "China 🇨🇳":"CNY",
+    "Canada 🇨🇦":"CAD",
+    "Australia 🇦🇺":"AUD",
+    "Switzerland 🇨🇭":"CHF",
+    "India 🇮🇳":"INR",
+    "Russia 🇷🇺":"RUB",
+    "Korea 🇰🇷":"KRW",
+    "UAE 🇦🇪":"AED",
+    "Saudi 🇸🇦":"SAR",
+    "Brazil 🇧🇷":"BRL",
+    "Mexico 🇲🇽":"MXN",
+    "Sweden 🇸🇪":"SEK",
+    "Norway 🇳🇴":"NOK",
+    "New Zealand 🇳🇿":"NZD"
+}
+
 last = {"usd": None, "btc": None, "gold": None}
+users = set()
 
-subscribers = set()
-
-# ===================== FX (REAL - FRANKFURTER API) =====================
+# ===================== FX (REAL) =====================
 def fx(base, target):
     url = f"https://api.frankfurter.app/latest?from={base}&to={target}"
-    data = requests.get(url).json()
-    return data["rates"][target]
+    return requests.get(url).json()["rates"][target]
 
-# ===================== CRYPTO (REAL - COINGECKO) =====================
-def crypto_price(coin):
-    url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currencies=usd"
-    return requests.get(url).json()[coin]["usd"]
+# ===================== CRYPTO (REAL) =====================
+def crypto(c):
+    url = f"https://api.coingecko.com/api/v3/simple/price?ids={c}&vs_currencies=usd"
+    return requests.get(url).json()[c]["usd"]
 
-# ===================== METALS (REAL) =====================
+# ===================== METALS =====================
 def metals():
     url = "https://api.metals.live/v1/spot"
     d = requests.get(url).json()[0]
-    return d["gold"], d["silver"]
-
-# ===================== OIL (REAL-ish) =====================
-def oil():
-    return requests.get("https://api.metals.live/v1/spot").json()[0]["oil"]
+    return d["gold"], d["silver"], d["oil"]
 
 # ===================== CHART =====================
-def chart_usd():
-    prices = [fx("USD","IRR") for _ in range(6)]
-
-    plt.plot(prices)
-    plt.title("USD/IRR Live Chart")
+def chart():
+    data = [fx("USD","IRR") for _ in range(6)]
+    plt.plot(data)
+    plt.title("USD/IRR LIVE")
     path = "chart.png"
     plt.savefig(path)
     plt.close()
@@ -59,24 +79,24 @@ def chart_usd():
 # ===================== MENU =====================
 menu = ReplyKeyboardMarkup(
     [
-        ["💱 ارز", "₿ کریپتو"],
-        ["🥇 طلا", "🛢 نفت"],
-        ["📊 نمودار", "🌍 کشورها"],
-        ["🧠 پیش‌بینی", "🔔 وضعیت"]
+        ["💱 ارز","₿ کریپتو"],
+        ["🥇 طلا","🌍 واحد پول کشورها"],
+        ["📊 نمودار","🧠 پیش‌بینی"],
+        ["🔔 وضعیت"]
     ],
     resize_keyboard=True
 )
 
 # ===================== START =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    subscribers.add(update.effective_chat.id)
+    users.add(update.effective_chat.id)
 
     await update.message.reply_text(
-        "📊 ربات مالی واقعی و حرفه‌ای\n👤 امیر علی فروزان اصل",
+        "🚀 GOD MODE 2\n👤 امیر علی فروزان اصل",
         reply_markup=menu
     )
 
-# ===================== HANDLER =====================
+# ===================== HANDLE =====================
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global last
     text = update.message.text
@@ -85,82 +105,66 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "💱 ارز":
         out = []
         for c in FX_LIST:
-            try:
-                rate = fx("USD", c)
-                out.append(f"USD → {c} = {rate}")
-            except:
-                pass
+            out.append(f"USD→{c} = {fx('USD',c)}")
         await update.message.reply_text("\n".join(out))
 
     # ₿ CRYPTO
     elif text == "₿ کریپتو":
         out = []
         for c in CRYPTO[:15]:
-            try:
-                out.append(f"{c.upper()} = ${crypto_price(c)}")
-            except:
-                pass
+            out.append(f"{c.upper()} = ${crypto(c)}")
         await update.message.reply_text("\n".join(out))
 
-    # 🥇 GOLD
+    # 🥇 METALS
     elif text == "🥇 طلا":
-        g, s = metals()
-        await update.message.reply_text(f"🥇 Gold: {g}\n🥈 Silver: {s}")
+        g,s,o = metals()
+        await update.message.reply_text(
+            f"🥇 Gold: {g}\n🥈 Silver: {s}\n🛢 Oil: {o}"
+        )
 
-    # 🛢 OIL
-    elif text == "🛢 نفت":
-        await update.message.reply_text(f"🛢 Oil: {oil()}")
+    # 🌍 COUNTRIES (NEW BUTTON)
+    elif text == "🌍 واحد پول کشورها":
+
+        out = []
+        for name, code in COUNTRIES.items():
+            try:
+                rate = fx("USD", code)
+                out.append(f"{name} = {rate}")
+            except:
+                pass
+
+        await update.message.reply_text("\n".join(out))
 
     # 📊 CHART
     elif text == "📊 نمودار":
-        path = chart_usd()
-        await update.message.reply_photo(photo=open(path, "rb"))
+        path = chart()
+        await update.message.reply_photo(photo=open(path,"rb"))
 
-    # 🌍 COUNTRIES
-    elif text == "🌍 کشورها":
-        await update.message.reply_text(
-            "USD 🇺🇸\nEUR 🇪🇺\nGBP 🇬🇧\nJPY 🇯🇵\nIRR 🇮🇷\nCNY 🇨🇳\nTRY 🇹🇷"
-        )
-
-    # 🧠 AI PREDICTION (REAL TREND BASED)
+    # 🧠 AI
     elif text == "🧠 پیش‌بینی":
-
-        price_now = fx("USD","IRR")
-
-        if last["usd"]:
-            trend = "📈 صعودی" if price_now > last["usd"] else "📉 نزولی"
-        else:
-            trend = "📊 شروع داده"
-
-        prediction = price_now * (1.02 if trend == "📈 صعودی" else 0.98)
+        price = fx("USD","IRR")
+        trend = "📈" if last["usd"] and price > last["usd"] else "📉"
+        future = price * (1.03 if trend=="📈" else 0.97)
 
         await update.message.reply_text(
-            f"""
-🧠 AI تحلیل واقعی
-
-الان: {price_now}
-روند: {trend}
-پیش‌بینی: {prediction:.0f}
-"""
+            f"🧠 AI\nالان: {price}\nروند: {trend}\nپیش‌بینی: {future:.0f}"
         )
 
-        last["usd"] = price_now
+        last["usd"] = price
 
-    # 🔔 STATUS (multi alert)
+    # 🔔 STATUS
     elif text == "🔔 وضعیت":
 
         usd = fx("USD","IRR")
-        btc = crypto_price("bitcoin")
-        gold,_ = metals()
+        btc = crypto("bitcoin")
+        gold,_,_ = metals()
 
         msg = "📊 وضعیت بازار\n"
 
         if last["usd"]:
             msg += f"USD: {'📈' if usd>last['usd'] else '📉'}\n"
-
         if last["btc"]:
             msg += f"BTC: {'📈' if btc>last['btc'] else '📉'}\n"
-
         if last["gold"]:
             msg += f"GOLD: {'📈' if gold>last['gold'] else '📉'}\n"
 
@@ -175,8 +179,8 @@ async def watcher(app):
     while True:
         try:
             usd = fx("USD","IRR")
-            btc = crypto_price("bitcoin")
-            gold,_ = metals()
+            btc = crypto("bitcoin")
+            gold,_,_ = metals()
 
             msg = None
 
@@ -192,15 +196,15 @@ async def watcher(app):
             last["usd"], last["btc"], last["gold"] = usd, btc, gold
 
             if msg:
-                for c in subscribers:
-                    await app.bot.send_message(c, msg)
+                for u in users:
+                    await app.bot.send_message(u, msg)
 
         except:
             pass
 
         await asyncio.sleep(60)
 
-# ===================== APP =====================
+# ===================== RUN APP =====================
 app = Application.builder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
@@ -211,5 +215,5 @@ async def post_init(app):
 
 app.post_init = post_init
 
-print("Bot running...")
+print("GOD MODE 2 RUNNING...")
 app.run_polling()
