@@ -1,135 +1,157 @@
 import os
 import requests
-
-from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes
-)
+import matplotlib.pyplot as plt
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 TOKEN = os.getenv("BOT_TOKEN")
 
+# ذخیره قیمت قبلی برای هشدار
+last_price = {"usd_irr": None}
 
-# ===================== FIAT CURRENCY =====================
-def get_fx(base, target):
 
+# ===================== FX =====================
+def fx(base, target):
     url = f"https://fxapi.app/api/{base}/{target}.json"
-    res = requests.get(url)
-    data = res.json()
-
-    return data["rate"]
+    return requests.get(url).json()["rate"]
 
 
 # ===================== CRYPTO =====================
-def get_crypto(coin):
-
+def crypto(coin):
     url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currencies=usd"
-
-    res = requests.get(url)
-    data = res.json()
-
-    return data[coin]["usd"]
+    return requests.get(url).json()[coin]["usd"]
 
 
-# ===================== COMMAND: CURRENCY =====================
-async def currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    try:
-        _, base, target, amount = update.message.text.split()
-
-        rate = get_fx(base.lower(), target.lower())
-        result = float(amount) * rate
-
-        await update.message.reply_text(
-            f"""
-💱 تبدیل ارز
-
-{amount} {base.upper()} = {result:.2f} {target.upper()}
-
-📊 نرخ: {rate}
-
-سازنده:
-امیر علی فروزان اصل
-"""
-        )
-
-    except:
-        await update.message.reply_text(
-            "❌ فرمت درست:\n/cur usd eur 100"
-        )
+# ===================== GOLD =====================
+def gold():
+    url = "https://api.metals.live/v1/spot"
+    data = requests.get(url).json()
+    return data[0]["gold"], data[0]["silver"]
 
 
-# ===================== COMMAND: CRYPTO =====================
-async def crypto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ===================== CHART =====================
+def make_chart():
 
-    try:
-        _, coin = update.message.text.split()
+    prices = [fx("usd", "irr") for _ in range(5)]  # شبیه‌سازی داده
 
-        price = get_crypto(coin.lower())
+    plt.plot(prices)
+    plt.title("USD/IRR Live Chart")
 
-        await update.message.reply_text(
-            f"""
-₿ قیمت ارز دیجیتال
+    path = "chart.png"
+    plt.savefig(path)
+    plt.close()
 
-{coin.upper()} = ${price}
-
-سازنده:
-امیر علی فروزان اصل
-"""
-        )
-
-    except:
-        await update.message.reply_text(
-            "❌ فرمت درست:\n/crypto bitcoin"
-        )
+    return path
 
 
-# ===================== HELP =====================
-async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ===================== AI PREDICT =====================
+def predict_price():
 
-    await update.message.reply_text(
-        """
-📌 دستورات ربات:
+    rate = fx("usd", "irr")
 
-💱 تبدیل ارز:
-/cur usd eur 100
-/cur usd irr 50
+    # پیش‌بینی ساده (AI-like)
+    prediction_up = rate * 1.03
+    prediction_down = rate * 0.97
 
-₿ کریپتو:
-/crypto bitcoin
-/crypto ethereum
-
-🌍 ارزهای قابل استفاده:
-usd | eur | gbp | jpy | irr | try
-
-🔥 ساخته شده توسط:
-امیر علی فروزان اصل
-"""
-    )
+    return rate, prediction_up, prediction_down
 
 
-# ===================== START =====================
+# ===================== ALERT SYSTEM =====================
+def check_alert():
+
+    rate = fx("usd", "irr")
+
+    old = last_price["usd_irr"]
+
+    last_price["usd_irr"] = rate
+
+    if old is None:
+        return "📊 شروع مانیتور"
+
+    if rate > old:
+        return f"📈 دلار بالا رفت: {rate}"
+    elif rate < old:
+        return f"📉 دلار پایین آمد: {rate}"
+    else:
+        return "⏸ بدون تغییر"
+
+
+# ===================== START MENU =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    await update.message.reply_text(
-        """
-👋 به ربات مالی خوش آمدی
+    keyboard = [
+        [InlineKeyboardButton("💱 ارز", callback_data="fx")],
+        [InlineKeyboardButton("₿ کریپتو", callback_data="crypto")],
+        [InlineKeyboardButton("🥇 طلا", callback_data="gold")],
+        [InlineKeyboardButton("📊 نمودار", callback_data="chart")],
+        [InlineKeyboardButton("🧠 پیش‌بینی", callback_data="predict")],
+        [InlineKeyboardButton("🔔 وضعیت بازار", callback_data="alert")],
+    ]
 
-📌 /help برای راهنما
-💱 /cur برای تبدیل ارز
-₿ /crypto برای قیمت ارز دیجیتال
-"""
+    await update.message.reply_text(
+        "📊 ربات مالی حرفه‌ای (AI)",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
+
+
+# ===================== BUTTON HANDLER =====================
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+
+    # ---------------- FX ----------------
+    if data == "fx":
+        rate = fx("usd", "irr")
+        await query.edit_message_text(f"💱 دلار: {rate} تومان")
+
+    # ---------------- CRYPTO ----------------
+    elif data == "crypto":
+        price = crypto("bitcoin")
+        await query.edit_message_text(f"₿ Bitcoin: ${price}")
+
+    # ---------------- GOLD ----------------
+    elif data == "gold":
+        g, s = gold()
+        await query.edit_message_text(f"🥇 طلا: {g}$\n🥈 نقره: {s}$")
+
+    # ---------------- CHART ----------------
+    elif data == "chart":
+        path = make_chart()
+        await query.message.reply_photo(photo=open(path, "rb"))
+
+    # ---------------- PREDICT ----------------
+    elif data == "predict":
+
+        rate, up, down = predict_price()
+
+        await query.edit_message_text(
+            f"""
+🧠 AI Prediction
+
+الان: {rate}
+📈 بالا: {up:.0f}
+📉 پایین: {down:.0f}
+
+⚠️ تخمینی
+"""
+        )
+
+    # ---------------- ALERT ----------------
+    elif data == "alert":
+
+        msg = check_alert()
+
+        await query.edit_message_text(msg)
 
 
 # ===================== APP =====================
 app = Application.builder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("help", help_cmd))
-app.add_handler(CommandHandler("cur", currency))
-app.add_handler(CommandHandler("crypto", crypto))
+app.add_handler(CallbackQueryHandler(button))
 
 print("Bot is running...")
 app.run_polling()
