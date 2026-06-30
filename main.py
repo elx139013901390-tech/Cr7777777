@@ -4,12 +4,18 @@ import requests
 import matplotlib.pyplot as plt
 
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# ===================== DATA =====================
-FX_LIST = ["USD","EUR","GBP","JPY","TRY","CAD","AUD","CHF","CNY","IRR"]
+# ===================== REAL DATA =====================
+FX = ["USD","EUR","GBP","JPY","TRY","CAD","AUD","CHF","CNY","IRR"]
 
 CRYPTO = [
     "bitcoin","ethereum","bnb","solana","xrp","dogecoin","cardano","tron",
@@ -28,47 +34,36 @@ COUNTRIES = {
     "China 🇨🇳":"CNY",
     "Canada 🇨🇦":"CAD",
     "Australia 🇦🇺":"AUD",
-    "Switzerland 🇨🇭":"CHF",
-    "India 🇮🇳":"INR",
-    "Russia 🇷🇺":"RUB",
-    "Korea 🇰🇷":"KRW",
-    "UAE 🇦🇪":"AED",
-    "Saudi 🇸🇦":"SAR",
-    "Brazil 🇧🇷":"BRL",
-    "Mexico 🇲🇽":"MXN",
-    "Sweden 🇸🇪":"SEK",
-    "Norway 🇳🇴":"NOK",
-    "New Zealand 🇳🇿":"NZD"
+    "Switzerland 🇨🇭":"CHF"
 }
 
-last = {"usd": None, "btc": None, "gold": None}
 users = set()
+last = {"usd": None, "btc": None, "gold": None}
 
-# ===================== FX =====================
+# ===================== APIs =====================
 def fx(base, target):
     return requests.get(
         f"https://api.frankfurter.app/latest?from={base}&to={target}"
     ).json()["rates"][target]
 
-# ===================== CRYPTO =====================
 def crypto(c):
     return requests.get(
         f"https://api.coingecko.com/api/v3/simple/price?ids={c}&vs_currencies=usd"
     ).json()[c]["usd"]
 
-# ===================== GOLD (IRR CONVERTED) =====================
-def gold_irr():
+def metals():
     d = requests.get("https://api.metals.live/v1/spot").json()[0]
-    gold_usd = d["gold"]
+    return d["gold"], d["silver"], d["oil"]
 
-    usd_to_irr = fx("USD","IRR")
-    return gold_usd * usd_to_irr
+def gold_irr():
+    g = metals()[0]
+    return g * fx("USD","IRR")
 
 # ===================== CHART =====================
 def chart():
     data = [fx("USD","IRR") for _ in range(6)]
     plt.plot(data)
-    plt.title("USD/IRR LIVE")
+    plt.title("USD/IRR REAL")
     path = "chart.png"
     plt.savefig(path)
     plt.close()
@@ -78,9 +73,8 @@ def chart():
 menu = ReplyKeyboardMarkup(
     [
         ["💱 ارز","₿ کریپتو"],
-        ["🥇 طلا (ریال)","🌍 کشورها (ریال)"],
-        ["📊 نمودار","🧠 پیش‌بینی"],
-        ["🔔 وضعیت"]
+        ["🥇 طلا","🌍 کشورها"],
+        ["📊 نمودار","🔔 وضعیت"]
     ],
     resize_keyboard=True
 )
@@ -89,7 +83,7 @@ menu = ReplyKeyboardMarkup(
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users.add(update.effective_chat.id)
     await update.message.reply_text(
-        "🚀 GOD MODE 2 REAL FIXED\n👤 امیر علی فروزان اصل",
+        "🚀 REAL MARKET BOT\n👤 امیر علی فروزان اصل",
         reply_markup=menu
     )
 
@@ -98,40 +92,39 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global last
     text = update.message.text
 
-    # 💱 FX (REAL IRR OUTPUT)
+    # 💱 FX
     if text == "💱 ارز":
         out = []
-        for c in FX_LIST:
+        for c in FX:
             try:
                 rate = fx("USD", c)
-                if c == "IRR":
-                    rate = fx("USD","IRR")
                 out.append(f"USD→{c} = {rate}")
             except:
                 pass
         await update.message.reply_text("\n".join(out))
 
-    # ₿ CRYPTO (USD)
+    # ₿ CRYPTO
     elif text == "₿ کریپتو":
         out = []
         for c in CRYPTO[:15]:
             out.append(f"{c.upper()} = ${crypto(c)}")
         await update.message.reply_text("\n".join(out))
 
-    # 🥇 GOLD (IRR REAL)
-    elif text == "🥇 طلا (ریال)":
-        g_irr = gold_irr()
-        await update.message.reply_text(f"🥇 Gold (IRR): {g_irr:,.0f}")
+    # 🥇 GOLD IRR
+    elif text == "🥇 طلا":
+        await update.message.reply_text(
+            f"🥇 Gold IRR: {gold_irr():,.0f}"
+        )
 
-    # 🌍 COUNTRIES (IRR VALUE)
-    elif text == "🌍 کشورها (ریال)":
+    # 🌍 COUNTRIES IRR
+    elif text == "🌍 کشورها":
         usd_to_irr = fx("USD","IRR")
 
         out = []
         for name, code in COUNTRIES.items():
             try:
-                rate = fx("USD", code) * usd_to_irr
-                out.append(f"{name} = {rate:,.0f} IRR")
+                value = fx("USD", code) * usd_to_irr
+                out.append(f"{name} = {value:,.0f} IRR")
             except:
                 pass
 
@@ -142,27 +135,13 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
         path = chart()
         await update.message.reply_photo(photo=open(path,"rb"))
 
-    # 🧠 AI
-    elif text == "🧠 پیش‌بینی":
-        price = fx("USD","IRR")
-
-        trend = "📈" if last["usd"] and price > last["usd"] else "📉"
-        future = price * (1.03 if trend=="📈" else 0.97)
-
-        await update.message.reply_text(
-            f"🧠 AI\nالان: {price}\nروند: {trend}\nپیش‌بینی: {future:.0f}"
-        )
-
-        last["usd"] = price
-
     # 🔔 STATUS
     elif text == "🔔 وضعیت":
-
         usd = fx("USD","IRR")
         btc = crypto("bitcoin")
         gold = gold_irr()
 
-        msg = "📊 وضعیت بازار\n"
+        msg = "📊 MARKET\n"
 
         if last["usd"]:
             msg += f"USD: {'📈' if usd>last['usd'] else '📉'}\n"
@@ -175,7 +154,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(msg)
 
-# ===================== AUTO ALERT =====================
+# ===================== LIVE ALERT =====================
 async def watcher(app):
     global last
 
@@ -188,13 +167,13 @@ async def watcher(app):
             msg = None
 
             if last["usd"] and usd != last["usd"]:
-                msg = f"🔔 USD تغییر کرد: {usd:,.0f} IRR"
+                msg = f"🔔 USD: {usd:,.0f} IRR"
 
             if last["btc"] and btc != last["btc"]:
-                msg = f"🔔 BTC تغییر کرد: {btc}"
+                msg = f"🔔 BTC: {btc}"
 
             if last["gold"] and gold != last["gold"]:
-                msg = f"🔔 GOLD تغییر کرد: {gold:,.0f} IRR"
+                msg = f"🔔 GOLD: {gold:,.0f} IRR"
 
             last["usd"], last["btc"], last["gold"] = usd, btc, gold
 
@@ -218,5 +197,5 @@ async def post_init(app):
 
 app.post_init = post_init
 
-print("GOD MODE 2 FIXED RUNNING...")
+print("REAL BOT RUNNING...")
 app.run_polling()
