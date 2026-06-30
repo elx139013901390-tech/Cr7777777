@@ -8,14 +8,13 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ContextTyp
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# ===================== REAL DATA =====================
-FX_LIST = ["USD","EUR","GBP","JPY","TRY","CAD","AUD","CHF","CNY","IRR"]
+# ===================== REAL LISTS =====================
+FX = ["USD","EUR","GBP","JPY","TRY","CAD","AUD","CHF","CNY"]
 
 CRYPTO = [
-    "bitcoin","ethereum","bnb","solana","xrp","dogecoin","cardano","tron",
-    "litecoin","polkadot","avalanche-2","chainlink","stellar","shiba-inu",
-    "near","matic-network","uniswap","aptos","arbitrum","kaspa",
-    "okb","fantom","algorand","leo-token","tether"
+    "bitcoin","ethereum","bnb","solana","xrp","dogecoin",
+    "cardano","tron","litecoin","polkadot",
+    "chainlink","stellar","shiba-inu","near","matic-network"
 ]
 
 COUNTRIES = {
@@ -34,38 +33,36 @@ COUNTRIES = {
 users = set()
 last = {"usd": None, "btc": None, "gold": None}
 
-# ===================== SAFE API =====================
+# ===================== APIs (REAL ONLY) =====================
 def fx(base, target):
     try:
-        r = requests.get(
+        return requests.get(
             f"https://api.frankfurter.app/latest?from={base}&to={target}"
-        ).json()
-        return r["rates"][target]
+        ).json()["rates"][target]
     except:
         return None
 
 def crypto(c):
     try:
-        r = requests.get(
+        return requests.get(
             f"https://api.coingecko.com/api/v3/simple/price?ids={c}&vs_currencies=usd"
-        ).json()
-        return r[c]["usd"]
+        ).json()[c]["usd"]
     except:
         return None
 
 def metals():
     try:
-        r = requests.get("https://api.metals.live/v1/spot").json()[0]
-        return r["gold"], r["silver"], r["oil"]
+        return requests.get("https://api.metals.live/v1/spot").json()[0]
     except:
-        return 0,0,0
+        return {"gold":0,"silver":0,"oil":0}
 
 def usd_to_irr():
     v = fx("USD","IRR")
     return v if v else 0
 
+# ===================== GOLD IRR ONLY =====================
 def gold_irr():
-    g,_,_ = metals()
+    g = metals()["gold"]
     return g * usd_to_irr()
 
 # ===================== CHART =====================
@@ -77,17 +74,17 @@ def chart():
             data.append(v)
 
     plt.plot(data)
-    plt.title("USD → IRR (REAL)")
+    plt.title("USD → IRR REAL")
     path = "chart.png"
     plt.savefig(path)
     plt.close()
     return path
 
-# ===================== MENU =====================
+# ===================== UI =====================
 menu = ReplyKeyboardMarkup(
     [
         ["💱 ارز جهانی","₿ کریپتو"],
-        ["🥇 طلا و نفت","🌍 کشورها (IRR)"],
+        ["🥇 طلا (IRR)","🌍 کشورها (IRR)"],
         ["📊 نمودار","🔔 وضعیت بازار"]
     ],
     resize_keyboard=True
@@ -98,56 +95,50 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users.add(update.effective_chat.id)
 
     await update.message.reply_text(
-        "🚀 GOD MODE PRO REAL SYSTEM\n👤 امیر علی فروزان اصل",
+        "🚀 REAL FINANCE PRO BOT\n👤 امیر علی فروزان اصل",
         reply_markup=menu
     )
 
-# ===================== MAIN HANDLER =====================
+# ===================== HANDLER =====================
 async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global last
     text = update.message.text
 
-    # 💱 FX REAL
+    # 💱 FX → IRR
     if text == "💱 ارز جهانی":
+        irr = usd_to_irr()
         out = []
-        for c in FX_LIST:
+
+        for c in FX:
             v = fx("USD", c)
-            if v:
-                if c == "IRR":
-                    v = usd_to_irr()
-                out.append(f"USD → {c} = {v}")
+            if v and irr:
+                out.append(f"USD→{c} = {v * irr:,.0f} IRR")
+
         await update.message.reply_text("\n".join(out))
 
-    # ₿ CRYPTO REAL (USD)
+    # ₿ CRYPTO REAL
     elif text == "₿ کریپتو":
         out = []
-        for c in CRYPTO[:15]:
+        for c in CRYPTO[:12]:
             v = crypto(c)
             if v:
                 out.append(f"{c.upper()} = ${v}")
         await update.message.reply_text("\n".join(out))
 
-    # 🥇 GOLD + OIL (IRR)
-    elif text == "🥇 طلا و نفت":
-        g, s, o = metals()
-        irr = usd_to_irr()
-
-        msg = (
-            f"🥇 Gold: {g * irr:,.0f} IRR\n"
-            f"🥈 Silver: {s * irr:,.0f} IRR\n"
-            f"🛢 Oil: {o * irr:,.0f} IRR"
+    # 🥇 GOLD ONLY IRR (IMPORTANT FIX YOU WANTED)
+    elif text == "🥇 طلا (IRR)":
+        await update.message.reply_text(
+            f"🥇 Gold (IRR): {gold_irr():,.0f}"
         )
 
-        await update.message.reply_text(msg)
-
-    # 🌍 COUNTRIES → IRR
+    # 🌍 COUNTRIES IRR
     elif text == "🌍 کشورها (IRR)":
         irr = usd_to_irr()
 
         out = []
         for name, code in COUNTRIES.items():
             v = fx("USD", code)
-            if v:
+            if v and irr:
                 out.append(f"{name} = {v * irr:,.0f} IRR")
 
         await update.message.reply_text("\n".join(out))
@@ -176,7 +167,7 @@ async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await update.message.reply_text(msg)
 
-# ===================== LIVE SYSTEM =====================
+# ===================== LIVE ALERT SYSTEM (5 MIN FIXED) =====================
 async def watcher(app):
     global last
 
@@ -189,13 +180,13 @@ async def watcher(app):
             msg = None
 
             if last["usd"] and usd and usd != last["usd"]:
-                msg = f"🔔 USD تغییر کرد: {usd:,.0f} IRR"
+                msg = f"🔔 دلار تغییر کرد: {usd:,.0f} IRR"
 
             if last["btc"] and btc and btc != last["btc"]:
-                msg = f"🔔 BTC تغییر کرد: ${btc}"
+                msg = f"🔔 بیت‌کوین تغییر کرد: ${btc}"
 
             if last["gold"] and gold and gold != last["gold"]:
-                msg = f"🔔 GOLD تغییر کرد: {gold:,.0f} IRR"
+                msg = f"🔔 طلا تغییر کرد: {gold:,.0f} IRR"
 
             last["usd"], last["btc"], last["gold"] = usd, btc, gold
 
@@ -206,7 +197,8 @@ async def watcher(app):
         except:
             pass
 
-        await asyncio.sleep(60)
+        # ⏱ هر 5 دقیقه (طبق خواسته تو)
+        await asyncio.sleep(300)
 
 # ===================== RUN =====================
 app = Application.builder().token(TOKEN).build()
@@ -219,5 +211,5 @@ async def post_init(app):
 
 app.post_init = post_init
 
-print("🚀 PRO REAL BOT RUNNING...")
+print("🚀 FINAL REAL BOT RUNNING...")
 app.run_polling()
