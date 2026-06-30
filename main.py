@@ -1,13 +1,43 @@
 import os
+import asyncio
 import requests
-import matplotlib.pyplot as plt
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters
+)
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# ذخیره قیمت قبلی برای هشدار
-last_price = {"usd_irr": None}
+# ===================== DATA =====================
+FX_LIST = ["usd", "eur", "gbp", "jpy", "try", "cad", "aud", "chf", "cny", "irr"]
+
+CRYPTO = [
+    "bitcoin", "ethereum", "tether", "bnb", "solana",
+    "xrp", "dogecoin", "cardano", "tron", "litecoin",
+    "polkadot", "avalanche-2", "chainlink", "stellar",
+    "shiba-inu", "near", "matic-network", "uniswap",
+    "aptos", "arbitrum", "kaspa", "okb", "fantom",
+    "algorand", "leo-token"
+]
+
+COUNTRIES = {
+    "USA": "USD",
+    "EU": "EUR",
+    "UK": "GBP",
+    "Japan": "JPY",
+    "Iran": "IRR",
+    "China": "CNY",
+    "Turkey": "TRY"
+}
+
+# ===================== STATE =====================
+last_usd = None
+subscribers = set()
 
 
 # ===================== FX =====================
@@ -17,141 +47,167 @@ def fx(base, target):
 
 
 # ===================== CRYPTO =====================
-def crypto(coin):
+def crypto_price(coin):
     url = f"https://api.coingecko.com/api/v3/simple/price?ids={coin}&vs_currencies=usd"
     return requests.get(url).json()[coin]["usd"]
 
 
-# ===================== GOLD =====================
-def gold():
-    url = "https://api.metals.live/v1/spot"
-    data = requests.get(url).json()
-    return data[0]["gold"], data[0]["silver"]
+# ===================== MENU =====================
+menu = ReplyKeyboardMarkup(
+    [
+        ["💱 ارز", "₿ کریپتو"],
+        ["📊 لیست", "🌍 کشورها"],
+        ["🧠 پیش‌بینی", "🔔 وضعیت"]
+    ],
+    resize_keyboard=True
+)
 
 
-# ===================== CHART =====================
-def make_chart():
-
-    prices = [fx("usd", "irr") for _ in range(5)]  # شبیه‌سازی داده
-
-    plt.plot(prices)
-    plt.title("USD/IRR Live Chart")
-
-    path = "chart.png"
-    plt.savefig(path)
-    plt.close()
-
-    return path
-
-
-# ===================== AI PREDICT =====================
-def predict_price():
-
-    rate = fx("usd", "irr")
-
-    # پیش‌بینی ساده (AI-like)
-    prediction_up = rate * 1.03
-    prediction_down = rate * 0.97
-
-    return rate, prediction_up, prediction_down
-
-
-# ===================== ALERT SYSTEM =====================
-def check_alert():
-
-    rate = fx("usd", "irr")
-
-    old = last_price["usd_irr"]
-
-    last_price["usd_irr"] = rate
-
-    if old is None:
-        return "📊 شروع مانیتور"
-
-    if rate > old:
-        return f"📈 دلار بالا رفت: {rate}"
-    elif rate < old:
-        return f"📉 دلار پایین آمد: {rate}"
-    else:
-        return "⏸ بدون تغییر"
-
-
-# ===================== START MENU =====================
+# ===================== START =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    keyboard = [
-        [InlineKeyboardButton("💱 ارز", callback_data="fx")],
-        [InlineKeyboardButton("₿ کریپتو", callback_data="crypto")],
-        [InlineKeyboardButton("🥇 طلا", callback_data="gold")],
-        [InlineKeyboardButton("📊 نمودار", callback_data="chart")],
-        [InlineKeyboardButton("🧠 پیش‌بینی", callback_data="predict")],
-        [InlineKeyboardButton("🔔 وضعیت بازار", callback_data="alert")],
-    ]
+    subscribers.add(update.effective_chat.id)
 
     await update.message.reply_text(
-        "📊 ربات مالی حرفه‌ای (AI)",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        "📊 ربات مالی حرفه‌ای\n👤 امیر علی فروزان اصل",
+        reply_markup=menu
     )
 
 
-# ===================== BUTTON HANDLER =====================
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ===================== HANDLER =====================
+async def handle(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    query = update.callback_query
-    await query.answer()
+    global last_usd
 
-    data = query.data
+    text = update.message.text
+
 
     # ---------------- FX ----------------
-    if data == "fx":
-        rate = fx("usd", "irr")
-        await query.edit_message_text(f"💱 دلار: {rate} تومان")
+    if text == "💱 ارز":
+
+        out = []
+        for c in FX_LIST:
+            try:
+                out.append(f"USD → {c.upper()} = {fx('usd', c)}")
+            except:
+                pass
+
+        await update.message.reply_text("\n".join(out))
+
 
     # ---------------- CRYPTO ----------------
-    elif data == "crypto":
-        price = crypto("bitcoin")
-        await query.edit_message_text(f"₿ Bitcoin: ${price}")
+    elif text == "₿ کریپتو":
 
-    # ---------------- GOLD ----------------
-    elif data == "gold":
-        g, s = gold()
-        await query.edit_message_text(f"🥇 طلا: {g}$\n🥈 نقره: {s}$")
+        out = []
+        for c in CRYPTO:
+            try:
+                out.append(f"{c.upper()} = ${crypto_price(c)}")
+            except:
+                pass
 
-    # ---------------- CHART ----------------
-    elif data == "chart":
-        path = make_chart()
-        await query.message.reply_photo(photo=open(path, "rb"))
+        await update.message.reply_text("\n".join(out))
 
-    # ---------------- PREDICT ----------------
-    elif data == "predict":
 
-        rate, up, down = predict_price()
+    # ---------------- LIST ----------------
+    elif text == "📊 لیست":
 
-        await query.edit_message_text(
+        await update.message.reply_text(
+            "💱 USD EUR GBP JPY IRR CNY TRY\n"
+            "₿ BTC ETH SOL XRP DOGE +25"
+        )
+
+
+    # ---------------- COUNTRIES ----------------
+    elif text == "🌍 کشورها":
+
+        msg = "\n".join([f"{k}: {v}" for k, v in COUNTRIES.items()])
+        await update.message.reply_text(msg)
+
+
+    # ---------------- PREDICTION ----------------
+    elif text == "🧠 پیش‌بینی":
+
+        rate = fx("usd", "irr")
+
+        trend = "📈 صعودی" if last_usd and rate > last_usd else "📉 نزولی"
+
+        future = rate * 1.02 if trend == "📈 صعودی" else rate * 0.98
+
+        await update.message.reply_text(
             f"""
-🧠 AI Prediction
+🧠 AI تحلیل
 
 الان: {rate}
-📈 بالا: {up:.0f}
-📉 پایین: {down:.0f}
-
-⚠️ تخمینی
+روند: {trend}
+پیش‌بینی: {future:.0f}
 """
         )
 
-    # ---------------- ALERT ----------------
-    elif data == "alert":
 
-        msg = check_alert()
+    # ---------------- STATUS ----------------
+    elif text == "🔔 وضعیت":
 
-        await query.edit_message_text(msg)
+        rate = fx("usd", "irr")
+
+        msg = f"📊 دلار: {rate}"
+
+        if last_usd:
+            if rate > last_usd:
+                msg += "\n📈 بالا رفت"
+            elif rate < last_usd:
+                msg += "\n📉 پایین آمد"
+            else:
+                msg += "\n⏸ بدون تغییر"
+
+        last_usd = rate
+
+        await update.message.reply_text(msg)
+
+
+# ===================== AUTO ALERT =====================
+async def watcher(app):
+
+    global last_usd
+
+    while True:
+
+        try:
+            rate = fx("usd", "irr")
+
+            if last_usd is not None:
+
+                if rate != last_usd:
+
+                    msg = f"""
+🔔 تغییر قیمت دلار
+
+قبلی: {last_usd}
+جدید: {rate}
+"""
+
+                    for chat_id in subscribers:
+                        await app.bot.send_message(chat_id, msg)
+
+            last_usd = rate
+
+        except:
+            pass
+
+        await asyncio.sleep(60)
 
 
 # ===================== APP =====================
 app = Application.builder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(button))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
 
-print("Bot is running...")
+
+async def post_init(app):
+    asyncio.create_task(watcher(app))
+
+
+app.post_init = post_init
+
+print("Bot running...")
 app.run_polling()
