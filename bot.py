@@ -1,4 +1,3 @@
-```python
 #!/usr/bin/env python3
 """
 ربات قیمت طلا و سکه 📡
@@ -627,4 +626,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
